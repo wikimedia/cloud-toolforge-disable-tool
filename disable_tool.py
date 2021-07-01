@@ -442,7 +442,7 @@ def archive_dbs(conf):
                     mycursor.execute("DROP database %s;" % db[0])
 
 
-CONFIG_FILE = "/etc/disable_tools.conf"
+CONFIG_FILE = "/etc/disable_tool.conf"
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         "disable-tools",
