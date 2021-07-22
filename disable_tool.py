@@ -345,7 +345,7 @@ def _archive_home(tool):
         )
         return
 
-    archivepath = os.path.join(TOOL_NFS_ARCHIVE_DIR, tool)
+    archivepath = os.path.join(TOOL_NFS_ARCHIVE_DIR, "%s.tgz" % tool)
     args = ["tar", "-cpzf", archivepath, tool_dir]
     rval = subprocess.call(args)
     if rval:
@@ -358,7 +358,13 @@ def _archive_home(tool):
         logging.info("Archived %s to %s" % (tool_dir, archivepath))
 
     logging.info("Archive complete; removing %s" % tool_dir)
+
+    # We need to do some special magic to get replica.my.cnf out of the way;
+    #  otherwise the rmtree below will fail.
+    db_conf = os.path.join(TOOL_HOME_DIR, tool, REPLICA_CONF)
+    os.chflags(db_conf, 0)
     shutil.rmtree(tool_dir)
+    logging.info("removed %s" % tool_dir)
 
 
 def crontab(conf):
