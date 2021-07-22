@@ -103,9 +103,12 @@ def _disabled_datestamps(ds):
             #  'disable and archive immediately'
             disableddict[toolname] = uid, None
         else:
+            cleanstamp = timestamp.rstrip("Z")
+            if '.' not in cleanstamp:
+                cleanstamp = cleanstamp + '.0'
             disableddict[toolname] = (
                 uid,
-                datetime.datetime.strptime(timestamp.rstrip("Z"), "%Y%m%d%H%M%S"),
+                datetime.datetime.strptime(cleanstamp, "%Y%m%d%H%M%S.%f"),
             )
 
     return disableddict
