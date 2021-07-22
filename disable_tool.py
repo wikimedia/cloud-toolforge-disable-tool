@@ -361,8 +361,8 @@ def _archive_home(tool):
 
     # We need to do some special magic to get replica.my.cnf out of the way;
     #  otherwise the rmtree below will fail.
-    db_conf = os.path.join(TOOL_HOME_DIR, tool, REPLICA_CONF)
-    os.chflags(db_conf, 0)
+    db_conf = os.path.join(tool_dir, REPLICA_CONF)
+    subprocess.check_output(["chattr", "-i", db_conf])
     shutil.rmtree(tool_dir)
     logging.info("removed %s" % tool_dir)
 
