@@ -360,7 +360,7 @@ def _archive_home(tool):
 
 
 def crontab(conf):
-    if "sgecron" not in socket.gethostname():
+    if conf["crontab"]["hostname_substring"] not in socket.gethostname():
         LOG.error("This command can only be run on an sgecron node")
         exit(3)
 
@@ -411,8 +411,11 @@ REPLICA_CONF = "replica.my.cnf"
 def archive_dbs(conf):
     import mysql.connector
 
-    if conf["db"]["hostname_substring"] not in socket.gethostname():
-        LOG.error("This command can only be run on the toolforge database server")
+    if conf["archivedbs"]["hostname_substring"] not in socket.gethostname():
+        LOG.error(
+            "This command can only be run on a host that matches %s"
+            % conf["archivedbs"]["hostname_substring"]
+        )
         exit(5)
 
     ds = _open_ldap()
