@@ -210,6 +210,7 @@ def _delete_grid_quota(tool):
 
 DISABLED_GRID_FILE = "grid.disabled"
 DISABLED_K8S_FILE = "k8s.disabled"
+DISABLED_DB_FILE = "db.disabled"
 
 
 # Make sure everything is properly stopped before we start deleting stuff
@@ -223,6 +224,10 @@ def _is_ready_for_archive_and_delete(tool_home):
         return False
 
     disabled_k8s_file = os.path.join(tool_home, DISABLED_K8S_FILE)
+    if not os.path.isfile(disabled_k8s_file):
+        return False
+
+    archived_dbs_file = os.path.join(tool_home, DISABLED_DB_FILE)
     if not os.path.isfile(disabled_k8s_file):
         return False
 
@@ -451,6 +456,9 @@ def archive_dbs(conf):
                 if rval == 0:
                     LOG.info("Dump succeeded; now dropping %s" % db[0])
                     mycursor.execute("DROP database %s;" % db[0])
+
+            disabled_flag_file = os.path.join(TOOL_HOME_DIR, tool, DISABLED_DB_FILE)
+            pathlib.Path(disabled_flag_file).touch()
 
 
 CONFIG_FILE = "/etc/disable_tool.conf"
