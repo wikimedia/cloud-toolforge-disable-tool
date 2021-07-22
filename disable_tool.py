@@ -350,8 +350,8 @@ def _archive_home(tool):
 
 
 def crontab(conf):
-    if "crontab" not in socket.gethostname():
-        LOG.error("This command can only be run on an sgecron node node")
+    if "sgecron" not in socket.gethostname():
+        LOG.error("This command can only be run on an sgecron node")
         exit(3)
 
     ds = _open_ldap()
