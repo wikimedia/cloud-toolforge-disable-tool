@@ -104,8 +104,8 @@ def _disabled_datestamps(ds):
             disableddict[toolname] = uid, None
         else:
             cleanstamp = timestamp.rstrip("Z")
-            if '.' not in cleanstamp:
-                cleanstamp = cleanstamp + '.0'
+            if "." not in cleanstamp:
+                cleanstamp = cleanstamp + ".0"
             disableddict[toolname] = (
                 uid,
                 datetime.datetime.strptime(cleanstamp, "%Y%m%d%H%M%S.%f"),
@@ -303,6 +303,7 @@ def _delete_ldap_entries(tool, conf):
 
     # First, remove references to this tool_user_dn in other tools
     tool_base_dn = "ou=servicegroups,dc=wikimedia,dc=org"
+    LOG.info("Removing ldap references to %s" % tool_user_dn)
     all_tools = novaadmin_ds.search_s(
         tool_base_dn, ldap.SCOPE_ONELEVEL, "(objectClass=groupOfNames)", ["*"]
     )
@@ -315,7 +316,9 @@ def _delete_ldap_entries(tool, conf):
             novaadmin_ds.modify_s(thistool[0], ldif)
 
     # Now remove the tool itself
+    LOG.info("Removing ldap entry for %s" % tool_user_dn)
     novaadmin_ds.delete_s(tool_user_dn)
+    LOG.info("Removing ldap entry for %s" % tool_dn)
     novaadmin_ds.delete_s(tool_dn)
     novaadmin_ds.unbind()
 
@@ -385,8 +388,13 @@ def archive(conf):
             if not _is_ready_for_archive_and_delete(
                 os.path.join(TOOL_NFS_BASE_DIR, tool)
             ):
-                LOG.info("Tool %s is expired but not properly shut down yet")
+                LOG.info(
+                    "Tool %s is expired but not properly shut down yet. Postponing archive step."
+                    % tool
+                )
                 continue
+            else:
+                LOG.info("Tool %s is expired; archiving" % tool)
 
             _archive_home(tool)
             _delete_ldap_entries(tool, conf)
@@ -407,6 +415,7 @@ def archive_dbs(conf):
     for tool in disabled_tools:
         uid, datestamp = disabled_tools[tool]
         if _is_expired(datestamp, int(conf["default"]["archive_after_days"])):
+            LOG.info("Archiving databases for %s" % tool)
             if not _is_ready_for_archive_and_delete(os.path.join(TOOL_HOME_DIR, tool)):
                 LOG.info("Tool %s is expired but not properly shut down yet" % tool)
                 continue
