@@ -31,7 +31,7 @@ import subprocess
 import sys
 import tempfile
 
-logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+logging.basicConfig(filename="/var/log/disable-tool.log", level=logging.INFO)
 LOG = logging.getLogger(__name__)
 
 
