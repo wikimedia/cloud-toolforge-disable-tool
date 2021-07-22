@@ -463,7 +463,7 @@ def archive_dbs(conf):
             dbs = mycursor.fetchall()
             for db in dbs:
                 fname = os.path.join(TOOL_HOME_DIR, tool, "%s.mysql" % db[0])
-                LOG.info("Archiving databases %s for %s to " % (db[0], tool, fname))
+                LOG.info("Archiving databases %s for %s to %s" % (db[0], tool, fname))
                 LOG.info("Dumping %s to %s" % (db[0], fname))
                 f = open(fname, "w")
                 args = [
