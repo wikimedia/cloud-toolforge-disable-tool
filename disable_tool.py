@@ -425,7 +425,16 @@ def archive_dbs(conf):
     for tool in disabled_tools:
         uid, datestamp = disabled_tools[tool]
         if _is_expired(datestamp, int(conf["default"]["archive_after_days"])):
-            if not _is_ready_for_archive_and_delete(os.path.join(TOOL_HOME_DIR, tool)):
+            tool_home = os.path.join(TOOL_HOME_DIR, tool)
+            cron_archive = os.path.join(tool_home, DISABLED_CRON_NAME)
+            disabled_grid_file = os.path.join(tool_home, DISABLED_GRID_FILE)
+            disabled_k8s_file = os.path.join(tool_home, DISABLED_K8S_FILE)
+
+            if (
+                not os.path.isfile(disabled_k8s_file)
+                or not os.path.isfile(disabled_grid_file)
+                or not os.path.isfile(cron_archive)
+            ):
                 LOG.info("Tool %s is expired but not properly shut down yet" % tool)
                 continue
             LOG.info("Archiving databases for %s" % tool)
