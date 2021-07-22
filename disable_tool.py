@@ -115,6 +115,8 @@ def _disabled_datestamps(ds):
 
 
 def _is_expired(datestamp, days):
+    if datestamp is not None:
+        LOG.info("Elapsed days is %s" % (datetime.datetime.now() - datestamp).days)
     return datestamp is None or ((datetime.datetime.now() - datestamp).days > days)
 
 
@@ -228,7 +230,7 @@ def _is_ready_for_archive_and_delete(tool_home):
         return False
 
     archived_dbs_file = os.path.join(tool_home, DISABLED_DB_FILE)
-    if not os.path.isfile(disabled_k8s_file):
+    if not os.path.isfile(archived_dbs_file):
         return False
 
     return True
@@ -423,10 +425,10 @@ def archive_dbs(conf):
     for tool in disabled_tools:
         uid, datestamp = disabled_tools[tool]
         if _is_expired(datestamp, int(conf["default"]["archive_after_days"])):
-            LOG.info("Archiving databases for %s" % tool)
             if not _is_ready_for_archive_and_delete(os.path.join(TOOL_HOME_DIR, tool)):
                 LOG.info("Tool %s is expired but not properly shut down yet" % tool)
                 continue
+            LOG.info("Archiving databases for %s" % tool)
 
             db_conf = os.path.join(TOOL_HOME_DIR, tool, REPLICA_CONF)
             if not os.path.isfile(db_conf):
@@ -446,6 +448,7 @@ def archive_dbs(conf):
             dbs = mycursor.fetchall()
             for db in dbs:
                 fname = os.path.join(TOOL_HOME_DIR, tool, "%s.mysql" % db[0])
+                LOG.info("Archiving databases %s for %s to " % (db[0], tool, fname))
                 LOG.info("Dumping %s to %s" % (db[0], fname))
                 f = open(fname, "w")
                 args = [
