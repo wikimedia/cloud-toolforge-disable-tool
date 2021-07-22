@@ -28,7 +28,6 @@ import pathlib
 import shutil
 import socket
 import subprocess
-import sys
 import tempfile
 
 logging.basicConfig(filename="/var/log/disable-tool.log", level=logging.INFO)
