@@ -91,33 +91,42 @@ def _disabled_datestamps(ds):
 
     basedn = "ou=people,ou=servicegroups,dc=wikimedia,dc=org"
     disabled_tools = ds.search_s(
-        basedn, ldap.SCOPE_ONELEVEL, "(pwdAccountLockedTime=*)", ["*", "+"]
+        basedn,
+        ldap.SCOPE_ONELEVEL,
+        "(|(pwdAccountLockedTime=*)(pwdPolicySubentry=cn=disabled,ou=ppolicies,dc=wikimedia,dc=org))",
+        ["*", "+"],
     )
 
     for tool in disabled_tools:
         toolname = tool[1]["cn"][0].decode("utf8").split(".")[1]
-        timestamp = tool[1]["pwdAccountLockedTime"][0].decode("utf8")
         uid = tool[1]["uidNumber"][0].decode("utf8")
-        if timestamp == "000001010000Z":
-            # This is a special case which we'll interpret to mean
-            #  'disable and archive immediately'
-            disableddict[toolname] = uid, None
+        if "pwdAccountLockedTime" in tool[1]:
+            timestamp = tool[1]["pwdAccountLockedTime"][0].decode("utf8")
+            if timestamp == "000001010000Z":
+                # This is a special case which we'll interpret to mean
+                #  'disable and archive immediately'
+                expirestamp = datetime.date.min
+            else:
+                cleanstamp = timestamp.rstrip("Z")
+                if "." not in cleanstamp:
+                    cleanstamp = cleanstamp + ".0"
+                expirestamp = (
+                    datetime.datetime.strptime(cleanstamp, "%Y%m%d%H%M%S.%f"),
+                )
         else:
-            cleanstamp = timestamp.rstrip("Z")
-            if "." not in cleanstamp:
-                cleanstamp = cleanstamp + ".0"
-            disableddict[toolname] = (
-                uid,
-                datetime.datetime.strptime(cleanstamp, "%Y%m%d%H%M%S.%f"),
-            )
+            # This tool is marked as disabled but we don't have an expiration date
+            # so we set the date to the far future; it will be treated as disabled
+            # but never expire.
+            expirestamp = datetime.date.max
+
+        disableddict[toolname] = uid, expirestamp
 
     return disableddict
 
 
 def _is_expired(datestamp, days):
-    if datestamp is not None:
-        LOG.info("Elapsed days is %s" % (datetime.datetime.now() - datestamp).days)
-    return datestamp is None or ((datetime.datetime.now() - datestamp).days > days)
+    LOG.info("Elapsed days is %s" % (datetime.datetime.now() - datestamp).days)
+    return (datetime.datetime.now() - datestamp).days > days
 
 
 CRON_DIR = "/var/spool/cron/crontabs"
