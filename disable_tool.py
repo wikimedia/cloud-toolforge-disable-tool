@@ -107,7 +107,7 @@ def _disabled_datestamps(ds, projectname):
             if timestamp == "000001010000Z":
                 # This is a special case which we'll interpret to mean
                 #  'disable and archive immediately'
-                expirestamp = datetime.date.min
+                expirestamp = datetime.datetime.min
             else:
                 cleanstamp = timestamp.rstrip("Z")
                 if "." not in cleanstamp:
@@ -119,7 +119,7 @@ def _disabled_datestamps(ds, projectname):
             # This tool is marked as disabled but we don't have an expiration date
             # so we set the date to the far future; it will be treated as disabled
             # but never expire.
-            expirestamp = datetime.date.max
+            expirestamp = datetime.datetime.max
 
         disableddict[toolname] = uid, expirestamp
 
