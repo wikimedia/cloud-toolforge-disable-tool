@@ -86,14 +86,16 @@ def _open_ldap(binddn=None, bindpw=None):
     return None
 
 
-def _disabled_datestamps(ds):
+def _disabled_datestamps(ds, projectname):
     disableddict = {}
 
     basedn = "ou=people,ou=servicegroups,dc=wikimedia,dc=org"
     disabled_tools = ds.search_s(
         basedn,
         ldap.SCOPE_ONELEVEL,
-        "(|(pwdAccountLockedTime=*)(pwdPolicySubentry=cn=disabled,ou=ppolicies,dc=wikimedia,dc=org))",
+        "(&(|(pwdAccountLockedTime=*)(pwdPolicySubentry=cn=disabled,ou=ppolicies,dc=wikimedia,dc=org))(cn={}.*))".format(
+            projectname
+        ),
         ["*", "+"],
     )
 
@@ -309,7 +311,7 @@ def _delete_ldap_entries(tool, conf):
 
     # Doublecheck that our creds are working and we sould really
     #  delete this
-    disabled_tools = _disabled_datestamps(novaadmin_ds)
+    disabled_tools = _disabled_datestamps(novaadmin_ds, conf["default"]["projectname"])
     if tool not in disabled_tools:
         LOG.warning("Asked to delete %s but can't confirm that it's disabled." % tool)
         return
@@ -382,7 +384,7 @@ def crontab(conf):
         exit(3)
 
     ds = _open_ldap()
-    reconcile_crontabs(_disabled_datestamps(ds))
+    reconcile_crontabs(_disabled_datestamps(ds, conf["default"]["projectname"]))
 
 
 def gridengine(conf):
@@ -391,7 +393,7 @@ def gridengine(conf):
         exit(2)
 
     ds = _open_ldap()
-    disabled_tools = _disabled_datestamps(ds)
+    disabled_tools = _disabled_datestamps(ds, conf["default"]["projectname"])
     for tool in disabled_tools:
         _kill_grid_jobs(tool)
     reconcile_grid_quotas(disabled_tools)
@@ -403,7 +405,7 @@ def archive(conf):
         exit(4)
 
     ds = _open_ldap()
-    disabled_tools = _disabled_datestamps(ds)
+    disabled_tools = _disabled_datestamps(ds, conf["default"]["projectname"])
     for tool in disabled_tools:
         _uid, datestamp = disabled_tools[tool]
         if _is_expired(datestamp, int(conf["default"]["archive_after_days"])):
@@ -436,7 +438,7 @@ def archive_dbs(conf):
         exit(5)
 
     ds = _open_ldap()
-    disabled_tools = _disabled_datestamps(ds)
+    disabled_tools = _disabled_datestamps(ds, conf["default"]["projectname"])
     for tool in disabled_tools:
         uid, datestamp = disabled_tools[tool]
         if _is_expired(datestamp, int(conf["default"]["archive_after_days"])):
