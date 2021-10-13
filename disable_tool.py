@@ -490,7 +490,10 @@ def archive_dbs(conf):
             db_conf = os.path.join(TOOL_HOME_DIR, tool, REPLICA_CONF)
             if not os.path.isfile(db_conf):
                 # No replica.my.cnf so nothing to do
+                disabled_flag_file = os.path.join(TOOL_HOME_DIR, tool, DISABLED_DB_FILE)
+                pathlib.Path(disabled_flag_file).touch()
                 continue
+
             dbconfig = configparser.ConfigParser()
             dbconfig.read(db_conf)
             connection = mysql.connector.connect(
