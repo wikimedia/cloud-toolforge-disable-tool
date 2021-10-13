@@ -235,7 +235,13 @@ DISABLED_DB_FILE = "db.disabled"
 
 
 # Make sure everything is properly stopped before we start deleting stuff
-def _is_ready_for_archive_and_delete(tool_home):
+def _is_ready_for_archive_and_delete(conf, tool, project):
+    tool_home = _tool_dir(conf, tool, project)
+
+    if not os.path.exists(tool_home):
+        # This was archived on a prior path
+        return True
+
     cron_archive = os.path.join(tool_home, DISABLED_CRON_NAME)
     if not os.path.isfile(cron_archive):
         return False
@@ -305,8 +311,8 @@ def _kill_grid_jobs(tool):
 
 
 # Delete all ldap references to the specified tool.
-def _delete_ldap_entries(tool, conf):
-    if not _is_ready_for_archive_and_delete(os.path.join(TOOL_NFS_BASE_DIR, tool)):
+def _delete_ldap_entries(conf, tool, project):
+    if not _is_ready_for_archive_and_delete(conf, tool, project):
         LOG.info(
             "Tool %s is expired but not properly shut down yet, skipping file archive"
         )
@@ -317,15 +323,18 @@ def _delete_ldap_entries(tool, conf):
         conf["archive"]["ldap_bind_dn"], conf["archive"]["ldap_bind_pass"]
     )
 
-    # Doublecheck that our creds are working and we sould really
+    # Doublecheck that our creds are working and we should really
     #  delete this
-    disabled_tools = _disabled_datestamps(novaadmin_ds, conf["default"]["projectname"])
+    disabled_tools = _disabled_datestamps(novaadmin_ds, project)
     if tool not in disabled_tools:
         LOG.warning("Asked to delete %s but can't confirm that it's disabled." % tool)
         return
 
-    tool_dn = "cn=tools.%s,ou=servicegroups,dc=wikimedia,dc=org" % tool
-    tool_user_dn = "uid=tools.%s,ou=people,ou=servicegroups,dc=wikimedia,dc=org" % tool
+    tool_dn = "cn=%s.%s,ou=servicegroups,dc=wikimedia,dc=org" % (project, tool)
+    tool_user_dn = "uid=%s.%s,ou=people,ou=servicegroups,dc=wikimedia,dc=org" % (
+        project,
+        tool,
+    )
 
     # First, remove references to this tool_user_dn in other tools
     tool_base_dn = "ou=servicegroups,dc=wikimedia,dc=org"
@@ -349,23 +358,35 @@ def _delete_ldap_entries(tool, conf):
     novaadmin_ds.unbind()
 
 
-TOOL_NFS_BASE_DIR = "/srv/tools/shared/tools/project/"
-TOOL_NFS_ARCHIVE_DIR = "/srv/tools/archivedtools/"
+def _tool_dir(conf, tool, project):
+    base_dir = conf["archive"]["base_dir_%s" % project]
+    tool_dir = os.path.join(base_dir, tool)
+    return tool_dir
 
 
-# Make a tarball of the tool's project dir on TOOL_NFS_ARCHIVE_DIR,
+def _tool_archive_file(conf, tool, project):
+    archive_dir = conf["archive"]["archive_dir_%s" % project]
+    archivefile = os.path.join(archive_dir, "%s.tgz" % tool)
+    return archivefile
+
+
+# Make a tarball of the tool's project dir
 #  then delete the project dir.
-def _archive_home(tool):
-    tool_dir = os.path.join(TOOL_NFS_BASE_DIR, tool)
+def _archive_home(conf, tool, project):
+    tool_dir = _tool_dir(conf, tool, project)
 
-    if not _is_ready_for_archive_and_delete(os.path.join(TOOL_NFS_BASE_DIR, tool)):
+    if not _is_ready_for_archive_and_delete(conf, tool, project):
         LOG.info(
             "Tool %s is expired but not properly shut down yet, skipping file archive"
         )
         return
 
-    archivepath = os.path.join(TOOL_NFS_ARCHIVE_DIR, "%s.tgz" % tool)
-    args = ["tar", "-cpzf", archivepath, tool_dir]
+    if not os.path.exists(tool_dir):
+        # nothing to archive
+        return
+
+    archivefile = _tool_archive_file(conf, tool, project)
+    args = ["tar", "-cpzf", archivefile, tool_dir]
     rval = subprocess.call(args)
     if rval:
         logging.info(
@@ -374,7 +395,7 @@ def _archive_home(tool):
         )
         return False
     else:
-        logging.info("Archived %s to %s" % (tool_dir, archivepath))
+        logging.info("Archived %s to %s" % (tool_dir, archivefile))
 
     logging.info("Archive complete; removing %s" % tool_dir)
 
@@ -413,23 +434,25 @@ def archive(conf):
         exit(4)
 
     ds = _open_ldap()
-    disabled_tools = _disabled_datestamps(ds, conf["default"]["projectname"])
-    for tool in disabled_tools:
-        _uid, datestamp = disabled_tools[tool]
-        if _is_expired(datestamp, int(conf["default"]["archive_after_days"])):
-            if not _is_ready_for_archive_and_delete(
-                os.path.join(TOOL_NFS_BASE_DIR, tool)
-            ):
-                LOG.info(
-                    "Tool %s is expired but not properly shut down yet. Postponing archive step."
-                    % tool
-                )
-                continue
-            else:
-                LOG.info("Tool %s is expired; archiving" % tool)
+    for project in [
+        project.strip()
+        for project in conf["archive"]["all_projects_on_server"].split(",")
+    ]:
+        disabled_tools = _disabled_datestamps(ds, project)
+        for tool in disabled_tools:
+            _uid, datestamp = disabled_tools[tool]
+            if _is_expired(datestamp, int(conf["default"]["archive_after_days"])):
+                if not _is_ready_for_archive_and_delete(conf, tool, project):
+                    LOG.info(
+                        "Tool %s is expired but not shut down yet. Postponing archive step."
+                        % tool
+                    )
+                    continue
+                else:
+                    LOG.info("Tool %s is expired; archiving" % tool)
 
-            _archive_home(tool)
-            _delete_ldap_entries(tool, conf)
+                _archive_home(conf, tool, project)
+                _delete_ldap_entries(conf, tool, project)
 
 
 REPLICA_CONF = "replica.my.cnf"
