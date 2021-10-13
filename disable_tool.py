@@ -188,12 +188,16 @@ QUOTA_SUFFIX = "_disable"
 
 
 def _list_grid_quotas():
-    quotas = subprocess.check_output(["/usr/bin/qconf", "-srqsl"])
-    quota_list = [
-        quota[: quota.rfind(QUOTA_SUFFIX)]
-        for quota in quotas.decode("utf8").splitlines()
-    ]
-    return quota_list
+    try:
+        quotas = subprocess.check_output(["/usr/bin/qconf", "-srqsl"])
+        quota_list = [
+            quota[: quota.rfind(QUOTA_SUFFIX)]
+            for quota in quotas.decode("utf8").splitlines()
+        ]
+        return quota_list
+    except subprocess.CalledProcessError:
+        # qconf returns non-zero when there are no quotas -- that's fine.
+        return []
 
 
 def _create_grid_quota(tool):
@@ -210,8 +214,12 @@ def _create_grid_quota(tool):
 
 
 def _has_grid_quota(tool):
-    quotas = subprocess.check_output(["/usr/bin/qconf", "-srqsl"])
-    return "%s%s" % (tool, QUOTA_SUFFIX) in quotas.decode("utf8").splitlines()
+    try:
+        quotas = subprocess.check_output(["/usr/bin/qconf", "-srqsl"])
+        return "%s%s" % (tool, QUOTA_SUFFIX) in quotas.decode("utf8").splitlines()
+    except subprocess.CalledProcessError:
+        # qconf returns non-zero when there are no quotas -- that's fine.
+        return False
 
 
 def _delete_grid_quota(tool):
