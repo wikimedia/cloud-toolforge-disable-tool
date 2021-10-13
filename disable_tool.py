@@ -495,33 +495,44 @@ def archive_dbs(conf):
             dbconfig.read(db_conf)
             connection = mysql.connector.connect(
                 host="tools.db.svc.wikimedia.cloud",
-                user=dbconfig["client"]["user"],
-                password=dbconfig["client"]["password"],
+                user=dbconfig["client"]["user"].strip("'"),
+                password=dbconfig["client"]["password"].strip("'"),
             )
             mycursor = connection.cursor()
             mycursor.execute(
-                "SHOW databases LIKE '%s__%%';" % dbconfig["client"]["user"]
+                "SHOW databases LIKE '%s__%%';" % dbconfig["client"]["user"].strip("'")
             )
             dbs = mycursor.fetchall()
+            dump_failed = False
             for db in dbs:
                 fname = os.path.join(TOOL_HOME_DIR, tool, "%s.mysql" % db[0])
                 LOG.info("Archiving databases %s for %s to %s" % (db[0], tool, fname))
                 LOG.info("Dumping %s to %s" % (db[0], fname))
-                f = open(fname, "w")
-                args = [
-                    "mysqldump",
-                    "-u",
-                    dbconfig["client"]["user"],
-                    "--password=%s" % dbconfig["client"]["password"],
-                    db[0],
-                ]
-                rval = subprocess.call(args, stdout=f)
-                if rval == 0:
-                    LOG.info("Dump succeeded; now dropping %s" % db[0])
-                    mycursor.execute("DROP database %s;" % db[0])
+                with open(fname, "w") as f:
+                    args = [
+                        "mysqldump",
+                        "-u",
+                        dbconfig["client"]["user"].strip("'"),
+                        "--password=%s" % dbconfig["client"]["password"].strip("'"),
+                        "--quick",
+                        "--max_allowed_packet=512M",
+                        "--skip-lock-tables",
+                        db[0],
+                    ]
+                    rval = subprocess.call(args, stdout=f)
+                    if rval != 0:
+                        LOG.warning("Failed to dump db")
+                        # Something went wrong; exit and try again next time.
+                        dump_failed = True
+                        continue
 
-            disabled_flag_file = os.path.join(TOOL_HOME_DIR, tool, DISABLED_DB_FILE)
-            pathlib.Path(disabled_flag_file).touch()
+                LOG.info("Dump succeeded; now dropping %s" % db[0])
+                mycursor.execute("DROP database %s;" % db[0])
+
+            # Don't declare victory unless every dump succeeded
+            if not dump_failed:
+                disabled_flag_file = os.path.join(TOOL_HOME_DIR, tool, DISABLED_DB_FILE)
+                pathlib.Path(disabled_flag_file).touch()
 
 
 CONFIG_FILE = "/etc/disable_tool.conf"
