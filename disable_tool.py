@@ -506,7 +506,6 @@ def archive_dbs(conf):
                 "SHOW databases LIKE '%s__%%';" % dbconfig["client"]["user"].strip("'")
             )
             dbs = mycursor.fetchall()
-            dump_failed = False
             for db in dbs:
                 fname = os.path.join(TOOL_HOME_DIR, tool, "%s.mysql" % db[0])
                 LOG.info("Archiving databases %s for %s to %s" % (db[0], tool, fname))
@@ -523,18 +522,16 @@ def archive_dbs(conf):
                     ]
                     rval = subprocess.call(args, stdout=f)
                     if rval != 0:
-                        LOG.warning("Failed to dump db")
-                        # Something went wrong; exit and try again next time.
-                        dump_failed = True
-                        continue
+                        LOG.error("Failed to dump db %s for tool %s" % (db[0], tool))
+                        # Something went wrong; that probably means the table is undumpable
+                        #  We're going to be bold and just drop it.
 
-                LOG.info("Dump succeeded; now dropping %s" % db[0])
+                LOG.info("Dropping db %s for tool %s" % (db[0], tool))
                 mycursor.execute("DROP database %s;" % db[0])
 
-            # Don't declare victory unless every dump succeeded
-            if not dump_failed:
-                disabled_flag_file = os.path.join(TOOL_HOME_DIR, tool, DISABLED_DB_FILE)
-                pathlib.Path(disabled_flag_file).touch()
+            # Mark us as done with databases
+            disabled_flag_file = os.path.join(TOOL_HOME_DIR, tool, DISABLED_DB_FILE)
+            pathlib.Path(disabled_flag_file).touch()
 
 
 CONFIG_FILE = "/etc/disable_tool.conf"
