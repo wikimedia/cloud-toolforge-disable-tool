@@ -519,7 +519,6 @@ def archive_dbs(conf):
                         "--password=%s" % dbconfig["client"]["password"].strip("'"),
                         "--quick",
                         "--max_allowed_packet=512M",
-                        "--skip-lock-tables",
                         db[0],
                     ]
                     rval = subprocess.call(args, stdout=f)
