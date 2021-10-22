@@ -134,6 +134,7 @@ def _is_expired(datestamp, days):
 CRON_DIR = "/var/spool/cron/crontabs"
 TOOL_HOME_DIR = "/data/project/"
 DISABLED_CRON_NAME = "crontab.disabled"
+SERVICE_MANIFEST_FILE = "service.manifest"
 
 
 # When this finishes, each disabled tool will have a crontab.disabled
@@ -310,6 +311,14 @@ def _kill_grid_jobs(tool):
         subprocess.check_output(["/usr/bin/qdel", job])
 
 
+# Remove service.manifest so that webservicemonitor
+# leaves this tool alone
+def _remove_service_manifest(tool):
+    file_name = os.path.join(TOOL_HOME_DIR, tool, SERVICE_MANIFEST_FILE)
+    if os.path.exists(file_name):
+        os.path.remove(file_name)
+
+
 # Delete all ldap references to the specified tool.
 def _delete_ldap_entries(conf, tool, project):
     if not _is_ready_for_archive_and_delete(conf, tool, project):
@@ -425,6 +434,7 @@ def gridengine(conf):
     disabled_tools = _disabled_datestamps(ds, conf["default"]["projectname"])
     for tool in disabled_tools:
         _kill_grid_jobs(tool)
+        _remove_service_manifest(tool)
     reconcile_grid_quotas(disabled_tools)
 
 
