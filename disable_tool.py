@@ -115,7 +115,7 @@ def _disabled_datestamps(ds, projectname):
                 if "." not in cleanstamp:
                     cleanstamp = cleanstamp + ".0"
                 expirestamp = (
-                    datetime.datetime.strptime(cleanstamp, "%Y%m%d%H%M%S.%f"),
+                    datetime.datetime.strptime(cleanstamp, "%Y%m%d%H%M%S.%f")
                 )
         else:
             # This tool is marked as disabled but we don't have an expiration date
