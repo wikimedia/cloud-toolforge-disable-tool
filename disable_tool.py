@@ -50,9 +50,11 @@ def _getLdapInfo(attr, conffile="/etc/ldap.conf"):
             break
 
 
-def _open_ldap(binddn=None, bindpw=None):
-    ldapHost = _getLdapInfo("uri")
+def _open_ldap(ldapHost=None, binddn=None, bindpw=None):
     sslType = _getLdapInfo("ssl")
+
+    if ldapHost is None:
+        ldapHost = _getLdapInfo("uri")
 
     if binddn is None:
         binddn = _getLdapInfo("BINDDN")
@@ -329,7 +331,9 @@ def _delete_ldap_entries(conf, tool, project):
 
     # Get a special ldap session with read/write permissions
     novaadmin_ds = _open_ldap(
-        conf["archive"]["ldap_bind_dn"], conf["archive"]["ldap_bind_pass"]
+        conf["archive"]["ldap_uri"],
+        conf["archive"]["ldap_bind_dn"],
+        conf["archive"]["ldap_bind_pass"],
     )
 
     # Doublecheck that our creds are working and we should really
