@@ -318,7 +318,7 @@ def _kill_grid_jobs(tool):
 def _remove_service_manifest(tool):
     file_name = os.path.join(TOOL_HOME_DIR, tool, SERVICE_MANIFEST_FILE)
     if os.path.exists(file_name):
-        os.path.remove(file_name)
+        os.remove(file_name)
 
 
 # Delete all ldap references to the specified tool.
