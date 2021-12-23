@@ -30,7 +30,12 @@ import socket
 import subprocess
 import tempfile
 
-logging.basicConfig(filename="/var/log/disable-tool.log", level=logging.INFO)
+logging.basicConfig(
+    filename="/var/log/disable-tool.log",
+    level=logging.INFO,
+    format="%(asctime)s %(levelname) %(name): %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%SZ",
+)
 LOG = logging.getLogger(__name__)
 
 
