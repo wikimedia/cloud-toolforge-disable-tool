@@ -80,7 +80,9 @@ def _open_ldap(ldapHost=None, binddn=None, bindpw=None):
     except ldap.INVALID_DN_SYNTAX:
         LOG.debug("LDAP bind failure:  The bind DN is incorrect... \n")
     except ldap.NO_SUCH_OBJECT:
-        LOG.debug("LDAP bind failure:  " "Unable to locate the bind DN account.\n")
+        LOG.debug(
+            "LDAP bind failure:  " "Unable to locate the bind DN account.\n"
+        )
     except ldap.UNWILLING_TO_PERFORM as msg:
         LOG.debug(
             "LDAP bind failure:  "
@@ -97,11 +99,12 @@ def _disabled_datestamps(ds, projectname):
     disableddict = {}
 
     basedn = "ou=people,ou=servicegroups,dc=wikimedia,dc=org"
+    policy = "cn=disabled,ou=ppolicies,dc=wikimedia,dc=org"
     disabled_tools = ds.search_s(
         basedn,
         ldap.SCOPE_ONELEVEL,
-        "(&(|(pwdAccountLockedTime=*)(pwdPolicySubentry=cn=disabled,ou=ppolicies,dc=wikimedia,dc=org))(cn={}.*))".format(
-            projectname
+        "(&(|(pwdAccountLockedTime=*)(pwdPolicySubentry={}))(cn={}.*))".format(
+            policy, projectname
         ),
         ["*", "+"],
     )
@@ -119,8 +122,8 @@ def _disabled_datestamps(ds, projectname):
                 cleanstamp = timestamp.rstrip("Z")
                 if "." not in cleanstamp:
                     cleanstamp = cleanstamp + ".0"
-                expirestamp = (
-                    datetime.datetime.strptime(cleanstamp, "%Y%m%d%H%M%S.%f")
+                expirestamp = datetime.datetime.strptime(
+                    cleanstamp, "%Y%m%d%H%M%S.%f"
                 )
         else:
             # This tool is marked as disabled but we don't have an expiration date
@@ -183,7 +186,8 @@ def reconcile_crontabs(disabled_tools):
 
         if os.path.isfile(cronfile):
             LOG.warning(
-                "Tool %s has both an active crontab and and archived crontab" % tool
+                "Tool %s has both an active crontab and and archived crontab"
+                % tool
             )
         else:
             if os.path.getsize(archivefile):
@@ -224,7 +228,9 @@ def _create_grid_quota(tool):
 def _has_grid_quota(tool):
     try:
         quotas = subprocess.check_output(["/usr/bin/qconf", "-srqsl"])
-        return "%s%s" % (tool, QUOTA_SUFFIX) in quotas.decode("utf8").splitlines()
+        return (
+            "%s%s" % (tool, QUOTA_SUFFIX) in quotas.decode("utf8").splitlines()
+        )
     except subprocess.CalledProcessError:
         # qconf returns non-zero when there are no quotas -- that's fine.
         return False
@@ -284,21 +290,26 @@ def reconcile_grid_quotas(disabled_tools):
         cron_archive = os.path.join(TOOL_HOME_DIR, tool, DISABLED_CRON_NAME)
         if not os.path.isfile(cron_archive):
             LOG.warning(
-                "Tool %s may still have an active cron; postponing grid disable" % tool
+                "Tool %s may still have an active cron; postponing grid disable"
+                % tool
             )
             continue
 
         LOG.info("Disabling grid jobs for %s" % tool)
         _create_grid_quota(tool)
 
-        disabled_flag_file = os.path.join(TOOL_HOME_DIR, tool, DISABLED_GRID_FILE)
+        disabled_flag_file = os.path.join(
+            TOOL_HOME_DIR, tool, DISABLED_GRID_FILE
+        )
         pathlib.Path(disabled_flag_file).touch()
 
     for tool in to_enable:
         LOG.info("Enabling grid jobs for %s" % tool)
         _delete_grid_quota(tool)
 
-        disabled_flag_file = os.path.join(TOOL_HOME_DIR, tool, DISABLED_GRID_FILE)
+        disabled_flag_file = os.path.join(
+            TOOL_HOME_DIR, tool, DISABLED_GRID_FILE
+        )
         if os.path.exists(disabled_flag_file):
             os.remove(disabled_flag_file)
 
@@ -345,13 +356,18 @@ def _delete_ldap_entries(conf, tool, project):
     #  delete this
     disabled_tools = _disabled_datestamps(novaadmin_ds, project)
     if tool not in disabled_tools:
-        LOG.warning("Asked to delete %s but can't confirm that it's disabled." % tool)
+        LOG.warning(
+            "Asked to delete %s but can't confirm that it's disabled." % tool
+        )
         return
 
     tool_dn = "cn=%s.%s,ou=servicegroups,dc=wikimedia,dc=org" % (project, tool)
-    tool_user_dn = "uid=%s.%s,ou=people,ou=servicegroups,dc=wikimedia,dc=org" % (
-        project,
-        tool,
+    tool_user_dn = (
+        "uid=%s.%s,ou=people,ou=servicegroups,dc=wikimedia,dc=org"
+        % (
+            project,
+            tool,
+        )
     )
 
     # First, remove references to this tool_user_dn in other tools
@@ -460,7 +476,9 @@ def archive(conf):
         disabled_tools = _disabled_datestamps(ds, project)
         for tool in disabled_tools:
             _uid, datestamp = disabled_tools[tool]
-            if _is_expired(datestamp, int(conf["default"]["archive_after_days"])):
+            if _is_expired(
+                datestamp, int(conf["default"]["archive_after_days"])
+            ):
                 if not _is_ready_for_archive_and_delete(conf, tool, project):
                     LOG.info(
                         "Tool %s is expired but not shut down yet. Postponing archive step."
@@ -502,14 +520,18 @@ def archive_dbs(conf):
                 or not os.path.isfile(disabled_grid_file)
                 or not os.path.isfile(cron_archive)
             ):
-                LOG.info("Tool %s is expired but not properly shut down yet" % tool)
+                LOG.info(
+                    "Tool %s is expired but not properly shut down yet" % tool
+                )
                 continue
             LOG.info("Archiving databases for %s" % tool)
 
             db_conf = os.path.join(TOOL_HOME_DIR, tool, REPLICA_CONF)
             if not os.path.isfile(db_conf):
                 # No replica.my.cnf so nothing to do
-                disabled_flag_file = os.path.join(TOOL_HOME_DIR, tool, DISABLED_DB_FILE)
+                disabled_flag_file = os.path.join(
+                    TOOL_HOME_DIR, tool, DISABLED_DB_FILE
+                )
                 pathlib.Path(disabled_flag_file).touch()
                 continue
 
@@ -522,26 +544,32 @@ def archive_dbs(conf):
             )
             mycursor = connection.cursor()
             mycursor.execute(
-                "SHOW databases LIKE '%s__%%';" % dbconfig["client"]["user"].strip("'")
+                "SHOW databases LIKE '%s__%%';"
+                % dbconfig["client"]["user"].strip("'")
             )
             dbs = mycursor.fetchall()
             for db in dbs:
                 fname = os.path.join(TOOL_HOME_DIR, tool, "%s.mysql" % db[0])
-                LOG.info("Archiving databases %s for %s to %s" % (db[0], tool, fname))
+                LOG.info(
+                    "Archiving databases %s for %s to %s" % (db[0], tool, fname)
+                )
                 LOG.info("Dumping %s to %s" % (db[0], fname))
                 with open(fname, "w") as f:
                     args = [
                         "mysqldump",
                         "-u",
                         dbconfig["client"]["user"].strip("'"),
-                        "--password=%s" % dbconfig["client"]["password"].strip("'"),
+                        "--password=%s"
+                        % dbconfig["client"]["password"].strip("'"),
                         "--quick",
                         "--max_allowed_packet=1G",
                         db[0],
                     ]
                     rval = subprocess.call(args, stdout=f)
                     if rval != 0:
-                        LOG.error("Failed to dump db %s for tool %s" % (db[0], tool))
+                        LOG.error(
+                            "Failed to dump db %s for tool %s" % (db[0], tool)
+                        )
                         # Something went wrong; that probably means the table is undumpable
                         #  We're going to be bold and just drop it.
 
@@ -549,7 +577,9 @@ def archive_dbs(conf):
                 mycursor.execute("DROP database %s;" % db[0])
 
             # Mark us as done with databases
-            disabled_flag_file = os.path.join(TOOL_HOME_DIR, tool, DISABLED_DB_FILE)
+            disabled_flag_file = os.path.join(
+                TOOL_HOME_DIR, tool, DISABLED_DB_FILE
+            )
             pathlib.Path(disabled_flag_file).touch()
 
 
@@ -591,7 +621,8 @@ if __name__ == "__main__":
     sp_archivedbs = sp.add_parser(
         "archivedbs",
         help="Archive all databases used by a tool that's "
-        "been disabled for more than %s days" % config["default"]["archive_after_days"],
+        "been disabled for more than %s days"
+        % config["default"]["archive_after_days"],
     )
     sp_archivedbs.set_defaults(func=archive_dbs)
 
