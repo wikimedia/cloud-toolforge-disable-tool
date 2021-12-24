@@ -76,21 +76,18 @@ def _open_ldap(ldapHost=None, binddn=None, bindpw=None):
         ds.simple_bind_s(binddn, bindpw)
         return ds
     except ldap.CONSTRAINT_VIOLATION:
-        LOG.debug("LDAP bind failure:  Too many failed attempts.\n")
+        LOG.debug("LDAP bind failure: Too many failed attempts.")
     except ldap.INVALID_DN_SYNTAX:
-        LOG.debug("LDAP bind failure:  The bind DN is incorrect... \n")
+        LOG.debug("LDAP bind failure: The bind DN is incorrect...")
     except ldap.NO_SUCH_OBJECT:
-        LOG.debug(
-            "LDAP bind failure:  " "Unable to locate the bind DN account.\n"
-        )
-    except ldap.UNWILLING_TO_PERFORM as msg:
-        LOG.debug(
-            "LDAP bind failure:  "
-            "The LDAP server was unwilling to perform the action"
-            " requested.\nError was: %s\n" % msg[0]["info"]
+        LOG.debug("LDAP bind failure: Unable to locate the bind DN account.")
+    except ldap.UNWILLING_TO_PERFORM:
+        LOG.exception(
+            "LDAP bind failure: "
+            "server was unwilling to perform the action requested."
         )
     except ldap.INVALID_CREDENTIALS:
-        LOG.debug("LDAP bind failure:  Password incorrect.\n")
+        LOG.exception("LDAP bind failure: Password incorrect.")
 
     return None
 
@@ -137,8 +134,9 @@ def _disabled_datestamps(ds, projectname):
 
 
 def _is_expired(datestamp, days):
-    LOG.info("Elapsed days is %s" % (datetime.datetime.now() - datestamp).days)
-    return (datetime.datetime.now() - datestamp).days > days
+    elapsed = (datetime.datetime.now() - datestamp).days
+    LOG.info("Elapsed days is %s", elapsed)
+    return elapsed > days
 
 
 CRON_DIR = "/var/spool/cron/crontabs"
@@ -170,7 +168,7 @@ def reconcile_crontabs(disabled_tools):
         cronfile = os.path.join(CRON_DIR, "tools.%s" % tool)
         archivefile = os.path.join(TOOL_HOME_DIR, tool, DISABLED_CRON_NAME)
 
-        LOG.info("Archiving crontab for %s" % tool)
+        LOG.info("Archiving crontab for %s", tool)
         if os.path.isfile(cronfile):
             # we can't use os.rename across different volumes.
             subprocess.check_output(["mv", cronfile, archivefile])
@@ -182,12 +180,12 @@ def reconcile_crontabs(disabled_tools):
         cronfile = os.path.join(CRON_DIR, "tools.%s" % tool)
         archivefile = os.path.join(TOOL_HOME_DIR, tool, DISABLED_CRON_NAME)
 
-        LOG.info("Restoring crontab for %s" % tool)
+        LOG.info("Restoring crontab for %s", tool)
 
         if os.path.isfile(cronfile):
             LOG.warning(
-                "Tool %s has both an active crontab and and archived crontab"
-                % tool
+                "Tool %s has both an active crontab and and archived crontab",
+                tool,
             )
         else:
             if os.path.getsize(archivefile):
@@ -290,12 +288,12 @@ def reconcile_grid_quotas(disabled_tools):
         cron_archive = os.path.join(TOOL_HOME_DIR, tool, DISABLED_CRON_NAME)
         if not os.path.isfile(cron_archive):
             LOG.warning(
-                "Tool %s may still have an active cron; postponing grid disable"
-                % tool
+                "Tool %s may still have an active cron; postponing grid disable",
+                tool,
             )
             continue
 
-        LOG.info("Disabling grid jobs for %s" % tool)
+        LOG.info("Disabling grid jobs for %s", tool)
         _create_grid_quota(tool)
 
         disabled_flag_file = os.path.join(
@@ -304,7 +302,7 @@ def reconcile_grid_quotas(disabled_tools):
         pathlib.Path(disabled_flag_file).touch()
 
     for tool in to_enable:
-        LOG.info("Enabling grid jobs for %s" % tool)
+        LOG.info("Enabling grid jobs for %s", tool)
         _delete_grid_quota(tool)
 
         disabled_flag_file = os.path.join(
@@ -341,7 +339,8 @@ def _remove_service_manifest(tool):
 def _delete_ldap_entries(conf, tool, project):
     if not _is_ready_for_archive_and_delete(conf, tool, project):
         LOG.info(
-            "Tool %s is expired but not properly shut down yet, skipping file archive"
+            "Tool %s is expired but not properly shut down yet, skipping file archive",
+            tool,
         )
         return
 
@@ -357,7 +356,7 @@ def _delete_ldap_entries(conf, tool, project):
     disabled_tools = _disabled_datestamps(novaadmin_ds, project)
     if tool not in disabled_tools:
         LOG.warning(
-            "Asked to delete %s but can't confirm that it's disabled." % tool
+            "Asked to delete %s but can't confirm that it's disabled.", tool
         )
         return
 
@@ -372,7 +371,7 @@ def _delete_ldap_entries(conf, tool, project):
 
     # First, remove references to this tool_user_dn in other tools
     tool_base_dn = "ou=servicegroups,dc=wikimedia,dc=org"
-    LOG.info("Removing ldap references to %s" % tool_user_dn)
+    LOG.info("Removing ldap references to %s", tool_user_dn)
     all_tools = novaadmin_ds.search_s(
         tool_base_dn, ldap.SCOPE_ONELEVEL, "(objectClass=groupOfNames)", ["*"]
     )
@@ -385,9 +384,9 @@ def _delete_ldap_entries(conf, tool, project):
             novaadmin_ds.modify_s(thistool[0], ldif)
 
     # Now remove the tool itself
-    LOG.info("Removing ldap entry for %s" % tool_user_dn)
+    LOG.info("Removing ldap entry for %s", tool_user_dn)
     novaadmin_ds.delete_s(tool_user_dn)
-    LOG.info("Removing ldap entry for %s" % tool_dn)
+    LOG.info("Removing ldap entry for %s", tool_dn)
     novaadmin_ds.delete_s(tool_dn)
     novaadmin_ds.unbind()
 
@@ -411,7 +410,8 @@ def _archive_home(conf, tool, project):
 
     if not _is_ready_for_archive_and_delete(conf, tool, project):
         LOG.info(
-            "Tool %s is expired but not properly shut down yet, skipping file archive"
+            "Tool %s is expired but not properly shut down yet, skipping file archive",
+            tool,
         )
         return
 
@@ -423,22 +423,24 @@ def _archive_home(conf, tool, project):
     args = ["tar", "-cpzf", archivefile, tool_dir]
     rval = subprocess.call(args)
     if rval:
-        logging.info(
-            "Failed to archive %s with exit code %s. "
-            "Command was: %s" % (tool, rval, " ".join(args))
+        LOG.info(
+            "Failed to archive %s with exit code %s. Command was: %s",
+            tool,
+            rval,
+            " ".join(args),
         )
         return False
     else:
-        logging.info("Archived %s to %s" % (tool_dir, archivefile))
+        LOG.info("Archived %s to %s", tool_dir, archivefile)
 
-    logging.info("Archive complete; removing %s" % tool_dir)
+    LOG.info("Archive complete; removing %s", tool_dir)
 
     # We need to do some special magic to get replica.my.cnf out of the way;
     #  otherwise the rmtree below will fail.
     db_conf = os.path.join(tool_dir, REPLICA_CONF)
     subprocess.check_output(["chattr", "-i", db_conf])
     shutil.rmtree(tool_dir)
-    logging.info("removed %s" % tool_dir)
+    LOG.info("removed %s", tool_dir)
 
 
 def crontab(conf):
@@ -481,12 +483,12 @@ def archive(conf):
             ):
                 if not _is_ready_for_archive_and_delete(conf, tool, project):
                     LOG.info(
-                        "Tool %s is expired but not shut down yet. Postponing archive step."
-                        % tool
+                        "Tool %s is expired but not shut down yet. Postponing archive step.",
+                        tool,
                     )
                     continue
                 else:
-                    LOG.info("Tool %s is expired; archiving" % tool)
+                    LOG.info("Tool %s is expired; archiving", tool)
 
                 _archive_home(conf, tool, project)
                 _delete_ldap_entries(conf, tool, project)
@@ -500,8 +502,8 @@ def archive_dbs(conf):
 
     if conf["archivedbs"]["hostname_substring"] not in socket.gethostname():
         LOG.error(
-            "This command can only be run on a host that matches %s"
-            % conf["archivedbs"]["hostname_substring"]
+            "This command can only be run on a host that matches %s",
+            conf["archivedbs"]["hostname_substring"],
         )
         exit(5)
 
@@ -521,10 +523,10 @@ def archive_dbs(conf):
                 or not os.path.isfile(cron_archive)
             ):
                 LOG.info(
-                    "Tool %s is expired but not properly shut down yet" % tool
+                    "Tool %s is expired but not properly shut down yet", tool
                 )
                 continue
-            LOG.info("Archiving databases for %s" % tool)
+            LOG.info("Archiving databases for %s", tool)
 
             db_conf = os.path.join(TOOL_HOME_DIR, tool, REPLICA_CONF)
             if not os.path.isfile(db_conf):
@@ -551,9 +553,9 @@ def archive_dbs(conf):
             for db in dbs:
                 fname = os.path.join(TOOL_HOME_DIR, tool, "%s.mysql" % db[0])
                 LOG.info(
-                    "Archiving databases %s for %s to %s" % (db[0], tool, fname)
+                    "Archiving databases %s for %s to %s", db[0], tool, fname
                 )
-                LOG.info("Dumping %s to %s" % (db[0], fname))
+                LOG.info("Dumping %s to %s", db[0], fname)
                 with open(fname, "w") as f:
                     args = [
                         "mysqldump",
@@ -568,12 +570,12 @@ def archive_dbs(conf):
                     rval = subprocess.call(args, stdout=f)
                     if rval != 0:
                         LOG.error(
-                            "Failed to dump db %s for tool %s" % (db[0], tool)
+                            "Failed to dump db %s for tool %s", db[0], tool
                         )
                         # Something went wrong; that probably means the table is undumpable
                         #  We're going to be bold and just drop it.
 
-                LOG.info("Dropping db %s for tool %s" % (db[0], tool))
+                LOG.info("Dropping db %s for tool %s", db[0], tool)
                 mycursor.execute("DROP database %s;" % db[0])
 
             # Mark us as done with databases
