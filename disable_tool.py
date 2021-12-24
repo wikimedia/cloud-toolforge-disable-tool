@@ -17,11 +17,9 @@ homedir to signal which phases are complete.
 
 import argparse
 from copy import deepcopy
-import datetime
 import configparser
+import datetime
 import glob
-import ldap
-from ldap import modlist
 import logging
 import os
 import pathlib
@@ -30,6 +28,10 @@ import socket
 import subprocess
 import tempfile
 
+import ldap
+from ldap import modlist
+
+
 logging.basicConfig(
     filename="/var/log/disable-tool.log",
     level=logging.INFO,
@@ -37,6 +39,17 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%SZ",
 )
 LOG = logging.getLogger(__name__)
+
+QUOTA_SUFFIX = "_disable"
+CRON_DIR = "/var/spool/cron/crontabs"
+TOOL_HOME_DIR = "/data/project/"
+DISABLED_CRON_NAME = "crontab.disabled"
+SERVICE_MANIFEST_FILE = "service.manifest"
+DISABLED_GRID_FILE = "grid.disabled"
+DISABLED_K8S_FILE = "k8s.disabled"
+DISABLED_DB_FILE = "db.disabled"
+REPLICA_CONF = "replica.my.cnf"
+CONFIG_FILE = "/etc/disable_tool.conf"
 
 
 def _getLdapInfo(attr, conffile="/etc/ldap.conf"):
@@ -123,9 +136,9 @@ def _disabled_datestamps(ds, projectname):
                     cleanstamp, "%Y%m%d%H%M%S.%f"
                 )
         else:
-            # This tool is marked as disabled but we don't have an expiration date
-            # so we set the date to the far future; it will be treated as disabled
-            # but never expire.
+            # This tool is marked as disabled but we don't have an expiration
+            # date so we set the date to the far future; it will be treated as
+            # disabled but never expire.
             expirestamp = datetime.datetime.max
 
         disableddict[toolname] = uid, expirestamp
@@ -137,12 +150,6 @@ def _is_expired(datestamp, days):
     elapsed = (datetime.datetime.now() - datestamp).days
     LOG.info("Elapsed days is %s", elapsed)
     return elapsed > days
-
-
-CRON_DIR = "/var/spool/cron/crontabs"
-TOOL_HOME_DIR = "/data/project/"
-DISABLED_CRON_NAME = "crontab.disabled"
-SERVICE_MANIFEST_FILE = "service.manifest"
 
 
 # When this finishes, each disabled tool will have a crontab.disabled
@@ -194,9 +201,6 @@ def reconcile_crontabs(disabled_tools):
                 os.remove(archivefile)
 
 
-QUOTA_SUFFIX = "_disable"
-
-
 def _list_grid_quotas():
     try:
         quotas = subprocess.check_output(["/usr/bin/qconf", "-srqsl"])
@@ -241,11 +245,6 @@ def _delete_grid_quota(tool):
         )
 
 
-DISABLED_GRID_FILE = "grid.disabled"
-DISABLED_K8S_FILE = "k8s.disabled"
-DISABLED_DB_FILE = "db.disabled"
-
-
 # Make sure everything is properly stopped before we start deleting stuff
 def _is_ready_for_archive_and_delete(conf, tool, project):
     tool_home = _tool_dir(conf, tool, project)
@@ -273,11 +272,11 @@ def _is_ready_for_archive_and_delete(conf, tool, project):
     return True
 
 
-# Ensure that disabled tools prevent any new grid jobs from starting
-#  with a restrictive quota.
-# Also ensure that the restrictive quota has been removed for any
-#  tools that have been re-enabled.
 def reconcile_grid_quotas(disabled_tools):
+    """Ensure that disabled tools prevent any new grid jobs from starting with
+    a restrictive quota. Also ensure that the restrictive quota has been
+    removed for any tools that have been re-enabled.
+    """
     should_be_disabled = set(disabled_tools)
     already_disabled = set(_list_grid_quotas())
 
@@ -316,27 +315,29 @@ def _get_grid_jobs(tool):
     qstat_output = subprocess.check_output(
         ["/usr/bin/qstat", "-ne", "-u", "tools.%s" % tool]
     )
-    # The first two lines are headers. The first entry in subsequent lines is the job id
+    # The first two lines are headers. The first entry in subsequent lines is
+    # the job id
     jobs = [line.split()[0] for line in qstat_output.splitlines()[2:]]
     return jobs
 
 
-# Kill all SGE jobs owned by the specified tool
 def _kill_grid_jobs(tool):
+    """Kill all SGE jobs owned by the specified tool."""
     for job in _get_grid_jobs(tool):
         subprocess.check_output(["/usr/bin/qdel", job])
 
 
-# Remove service.manifest so that webservicemonitor
-# leaves this tool alone
 def _remove_service_manifest(tool):
+    """Remove service.manifest so that webservicemonitor leaves this tool
+    alone.
+    """
     file_name = os.path.join(TOOL_HOME_DIR, tool, SERVICE_MANIFEST_FILE)
     if os.path.exists(file_name):
         os.remove(file_name)
 
 
-# Delete all ldap references to the specified tool.
 def _delete_ldap_entries(conf, tool, project):
+    """Delete all ldap references to the specified tool."""
     if not _is_ready_for_archive_and_delete(conf, tool, project):
         LOG.info(
             "Tool %s is expired but not properly shut down yet, skipping file archive",
@@ -351,8 +352,7 @@ def _delete_ldap_entries(conf, tool, project):
         conf["archive"]["ldap_bind_pass"],
     )
 
-    # Doublecheck that our creds are working and we should really
-    #  delete this
+    # Doublecheck that our creds are working and we should really delete this
     disabled_tools = _disabled_datestamps(novaadmin_ds, project)
     if tool not in disabled_tools:
         LOG.warning(
@@ -403,9 +403,8 @@ def _tool_archive_file(conf, tool, project):
     return archivefile
 
 
-# Make a tarball of the tool's project dir
-#  then delete the project dir.
 def _archive_home(conf, tool, project):
+    """Make a tarball of the tool's project dir and delete the project dir."""
     tool_dir = _tool_dir(conf, tool, project)
 
     if not _is_ready_for_archive_and_delete(conf, tool, project):
@@ -494,9 +493,6 @@ def archive(conf):
                 _delete_ldap_entries(conf, tool, project)
 
 
-REPLICA_CONF = "replica.my.cnf"
-
-
 def archive_dbs(conf):
     import mysql.connector
 
@@ -572,8 +568,9 @@ def archive_dbs(conf):
                         LOG.error(
                             "Failed to dump db %s for tool %s", db[0], tool
                         )
-                        # Something went wrong; that probably means the table is undumpable
-                        #  We're going to be bold and just drop it.
+                        # Something went wrong; that probably means the table
+                        # is undumpable We're going to be bold and just drop
+                        # it.
 
                 LOG.info("Dropping db %s for tool %s", db[0], tool)
                 mycursor.execute("DROP database %s;" % db[0])
@@ -585,7 +582,6 @@ def archive_dbs(conf):
             pathlib.Path(disabled_flag_file).touch()
 
 
-CONFIG_FILE = "/etc/disable_tool.conf"
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         "disable-tools",
