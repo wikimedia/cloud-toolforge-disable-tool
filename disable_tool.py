@@ -35,7 +35,7 @@ from ldap import modlist
 logging.basicConfig(
     filename="/var/log/disable-tool.log",
     level=logging.INFO,
-    format="%(asctime)s %(levelname) %(name): %(message)s",
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%SZ",
 )
 LOG = logging.getLogger(__name__)
