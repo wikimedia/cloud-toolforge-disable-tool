@@ -450,6 +450,12 @@ def crontab(conf):
     ds = _open_ldap()
     reconcile_crontabs(_disabled_datestamps(ds, conf["default"]["projectname"]))
 
+    # The cron server happens to also be a submit host, so it's a good place
+    #  to run qdel:
+    disabled_tools = _disabled_datestamps(ds, conf["default"]["projectname"])
+    for tool in disabled_tools:
+        _kill_grid_jobs(tool)
+
 
 def gridengine(conf):
     if conf["gridengine"]["hostname_substring"] not in socket.gethostname():
@@ -459,8 +465,9 @@ def gridengine(conf):
     ds = _open_ldap()
     disabled_tools = _disabled_datestamps(ds, conf["default"]["projectname"])
     for tool in disabled_tools:
-        _kill_grid_jobs(tool)
         _remove_service_manifest(tool)
+        # we don't actually kill jobs here because we can't run qdel on the grid master.
+        # that job is left to the cron host (where we /can/ run qdel.)
     reconcile_grid_quotas(disabled_tools)
 
 
