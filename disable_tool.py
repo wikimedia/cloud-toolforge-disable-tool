@@ -584,7 +584,7 @@ def archive_dbs(conf):
                 LOG.info("Dropping db %s for tool %s", db[0], tool)
                 with connection.cursor() as cursor:
                     # This looks a bit unsafe.. but it's executed as the credentials of the tool
-                    cursor.execute("DROP database %s;" % db[0])
+                    cursor.execute("DROP database `%s`;" % db[0])
 
             # Mark us as done with databases
             disabled_flag_file = os.path.join(
