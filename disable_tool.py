@@ -501,7 +501,7 @@ def archive(conf):
 
 
 def archive_dbs(conf):
-    import mysql.connector
+    import pymysql
 
     if conf["archivedbs"]["hostname_substring"] not in socket.gethostname():
         LOG.error(
@@ -542,17 +542,19 @@ def archive_dbs(conf):
 
             dbconfig = configparser.ConfigParser()
             dbconfig.read(db_conf)
-            connection = mysql.connector.connect(
+            connection = pymysql.connect(
                 host="tools.db.svc.wikimedia.cloud",
                 user=dbconfig["client"]["user"].strip("'"),
                 password=dbconfig["client"]["password"].strip("'"),
             )
-            mycursor = connection.cursor()
-            mycursor.execute(
-                "SHOW databases LIKE '%s__%%';"
-                % dbconfig["client"]["user"].strip("'")
-            )
-            dbs = mycursor.fetchall()
+
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SHOW databases LIKE '%s__%%';"
+                    % dbconfig["client"]["user"].strip("'")
+                )
+                dbs = cursor.fetchall()
+
             for db in dbs:
                 fname = os.path.join(TOOL_HOME_DIR, tool, "%s.mysql" % db[0])
                 LOG.info(
@@ -580,13 +582,17 @@ def archive_dbs(conf):
                         # it.
 
                 LOG.info("Dropping db %s for tool %s", db[0], tool)
-                mycursor.execute("DROP database %s;" % db[0])
+                with connection.cursor() as cursor:
+                    # This looks a bit unsafe.. but it's executed as the credentials of the tool
+                    cursor.execute("DROP database %s;" % db[0])
 
             # Mark us as done with databases
             disabled_flag_file = os.path.join(
                 TOOL_HOME_DIR, tool, DISABLED_DB_FILE
             )
             pathlib.Path(disabled_flag_file).touch()
+
+            connection.close()
 
 
 if __name__ == "__main__":
