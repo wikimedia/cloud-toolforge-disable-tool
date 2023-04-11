@@ -23,6 +23,7 @@ import glob
 import logging
 import os
 import pathlib
+import pymysql
 import shutil
 import socket
 import subprocess
@@ -45,9 +46,6 @@ CRON_DIR = "/var/spool/cron/crontabs"
 TOOL_HOME_DIR = "/data/project/"
 DISABLED_CRON_NAME = "crontab.disabled"
 SERVICE_MANIFEST_FILE = "service.manifest"
-DISABLED_GRID_FILE = "grid.disabled"
-DISABLED_K8S_FILE = "k8s.disabled"
-DISABLED_DB_FILE = "db.disabled"
 REPLICA_CONF = "replica.my.cnf"
 CONFIG_FILE = "/etc/disable_tool.conf"
 
@@ -156,7 +154,7 @@ def _is_expired(datestamp, days):
 # file in its $home and no active cron.
 #
 # No active tool will have a crontab.disabled file.
-def reconcile_crontabs(disabled_tools):
+def reconcile_crontabs(conf, disabled_tools):
     # First, decide what we need to do with some set arithmetic.
     should_be_disabled = set(disabled_tools)
 
@@ -182,6 +180,7 @@ def reconcile_crontabs(disabled_tools):
         else:
             # Create an empty archive as a placeholder
             pathlib.Path(archivefile).touch()
+        set_step_complete(conf, tool, "crontab_disabled")
 
     for tool in to_enable:
         cronfile = os.path.join(CRON_DIR, "tools.%s" % tool)
@@ -199,6 +198,7 @@ def reconcile_crontabs(disabled_tools):
                 subprocess.check_output(["mv", archivefile, cronfile])
             else:
                 os.remove(archivefile)
+            set_step_complete(conf, tool, "crontab_disabled", state=False)
 
 
 def _list_grid_quotas():
@@ -257,22 +257,19 @@ def _is_ready_for_archive_and_delete(conf, tool, project):
     if not os.path.isfile(cron_archive):
         return False
 
-    disabled_grid_file = os.path.join(tool_home, DISABLED_GRID_FILE)
-    if not os.path.isfile(disabled_grid_file):
+    if not get_step_complete(conf, tool, "grid_disabled"):
         return False
 
-    disabled_k8s_file = os.path.join(tool_home, DISABLED_K8S_FILE)
-    if not os.path.isfile(disabled_k8s_file):
+    if not get_step_complete(conf, tool, "kubernetes_disabled"):
         return False
 
-    archived_dbs_file = os.path.join(tool_home, DISABLED_DB_FILE)
-    if not os.path.isfile(archived_dbs_file):
+    if not get_step_complete(conf, tool, "db_disabled"):
         return False
 
     return True
 
 
-def reconcile_grid_quotas(disabled_tools):
+def reconcile_grid_quotas(conf, disabled_tools):
     """Ensure that disabled tools prevent any new grid jobs from starting with
     a restrictive quota. Also ensure that the restrictive quota has been
     removed for any tools that have been re-enabled.
@@ -295,20 +292,13 @@ def reconcile_grid_quotas(disabled_tools):
         LOG.info("Disabling grid jobs for %s", tool)
         _create_grid_quota(tool)
 
-        disabled_flag_file = os.path.join(
-            TOOL_HOME_DIR, tool, DISABLED_GRID_FILE
-        )
-        pathlib.Path(disabled_flag_file).touch()
+        set_step_complete(conf, tool, "grid_disabled")
 
     for tool in to_enable:
         LOG.info("Enabling grid jobs for %s", tool)
         _delete_grid_quota(tool)
 
-        disabled_flag_file = os.path.join(
-            TOOL_HOME_DIR, tool, DISABLED_GRID_FILE
-        )
-        if os.path.exists(disabled_flag_file):
-            os.remove(disabled_flag_file)
+        set_step_complete(conf, tool, "grid_disabled", state=False)
 
 
 def _get_grid_jobs(tool):
@@ -389,6 +379,7 @@ def _delete_ldap_entries(conf, tool, project):
     LOG.info("Removing ldap entry for %s", tool_dn)
     novaadmin_ds.delete_s(tool_dn)
     novaadmin_ds.unbind()
+    set_step_complete(conf, tool, "ldap_deleted")
 
 
 def _tool_dir(conf, tool, project):
@@ -440,6 +431,7 @@ def _archive_home(conf, tool, project):
     subprocess.check_output(["chattr", "-i", db_conf])
     shutil.rmtree(tool_dir)
     LOG.info("removed %s", tool_dir)
+    set_step_complete(conf, tool, "home_archived")
 
 
 def crontab(conf):
@@ -448,7 +440,9 @@ def crontab(conf):
         exit(3)
 
     ds = _open_ldap()
-    reconcile_crontabs(_disabled_datestamps(ds, conf["default"]["projectname"]))
+    reconcile_crontabs(
+        conf, _disabled_datestamps(ds, conf["default"]["projectname"])
+    )
 
     # The cron server happens to also be a submit host, so it's a good place
     #  to run qdel:
@@ -468,7 +462,7 @@ def gridengine(conf):
         _remove_service_manifest(tool)
         # we don't actually kill jobs here because we can't run qdel on the grid master.
         # that job is left to the cron host (where we /can/ run qdel.)
-    reconcile_grid_quotas(disabled_tools)
+    reconcile_grid_quotas(conf, disabled_tools)
 
 
 def archive(conf):
@@ -500,9 +494,50 @@ def archive(conf):
                 _delete_ldap_entries(conf, tool, project)
 
 
-def archive_dbs(conf):
-    import pymysql
+def set_step_complete(conf, tool, step, state=True):
+    if state:
+        stateval = 1
+    else:
+        stateval = 0
 
+    connection = pymysql.connect(
+        host=conf["database"]["db_host"],
+        user=conf["database"]["db_username"],
+        password=conf["database"]["db_password"],
+        database=conf["database"]["db_name"],
+    )
+    query = (
+        f"INSERT INTO toolstate (toolname, `{step}`) "
+        f"VALUES ('{tool}', {stateval}) "
+        f"ON DUPLICATE KEY UPDATE `{step}`={stateval};"
+    )
+
+    with connection.cursor() as cursor:
+        cursor.execute(query)
+
+    connection.close()
+
+
+def get_step_complete(conf, tool, step):
+    connection = pymysql.connect(
+        host=conf["database"]["db_host"],
+        user=conf["database"]["db_username"],
+        password=conf["database"]["db_password"],
+        database=conf["database"]["db_name"],
+    )
+    query = "select `%s` from toolstate where toolname='%s'" % (step, tool)
+    with connection.cursor() as cursor:
+        cursor.execute(query)
+        rows = cursor.fetchall()
+    connection.close()
+
+    if rows and rows[0][step]:
+        return True
+
+    return False
+
+
+def archive_dbs(conf):
     if conf["archivedbs"]["hostname_substring"] not in socket.gethostname():
         LOG.error(
             "This command can only be run on a host that matches %s",
@@ -517,12 +552,10 @@ def archive_dbs(conf):
         if _is_expired(datestamp, int(conf["default"]["archive_after_days"])):
             tool_home = os.path.join(TOOL_HOME_DIR, tool)
             cron_archive = os.path.join(tool_home, DISABLED_CRON_NAME)
-            disabled_grid_file = os.path.join(tool_home, DISABLED_GRID_FILE)
-            disabled_k8s_file = os.path.join(tool_home, DISABLED_K8S_FILE)
 
             if (
-                not os.path.isfile(disabled_k8s_file)
-                or not os.path.isfile(disabled_grid_file)
+                not get_step_complete(conf, tool, "kubernetes_disabled")
+                or not get_step_complete(conf, tool, "grid_disabled")
                 or not os.path.isfile(cron_archive)
             ):
                 LOG.info(
@@ -534,10 +567,7 @@ def archive_dbs(conf):
             db_conf = os.path.join(TOOL_HOME_DIR, tool, REPLICA_CONF)
             if not os.path.isfile(db_conf):
                 # No replica.my.cnf so nothing to do
-                disabled_flag_file = os.path.join(
-                    TOOL_HOME_DIR, tool, DISABLED_DB_FILE
-                )
-                pathlib.Path(disabled_flag_file).touch()
+                set_step_complete(conf, tool, "db_disabled")
                 continue
 
             dbconfig = configparser.ConfigParser()
@@ -587,10 +617,7 @@ def archive_dbs(conf):
                     cursor.execute("DROP database `%s`;" % db[0])
 
             # Mark us as done with databases
-            disabled_flag_file = os.path.join(
-                TOOL_HOME_DIR, tool, DISABLED_DB_FILE
-            )
-            pathlib.Path(disabled_flag_file).touch()
+            set_step_complete(conf, tool, "db_disabled")
 
             connection.close()
 
