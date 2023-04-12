@@ -515,6 +515,7 @@ def set_step_complete(conf, tool, step, state=True):
     with connection.cursor() as cursor:
         cursor.execute(query)
 
+    connection.commit()
     connection.close()
 
 
