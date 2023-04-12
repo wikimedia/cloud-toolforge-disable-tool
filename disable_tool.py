@@ -103,6 +103,17 @@ def _open_ldap(ldapHost=None, binddn=None, bindpw=None):
     return None
 
 
+def _get_tool_record(ds, toolname, projectname):
+    tool_base_dn = "ou=servicegroups,dc=wikimedia,dc=org"
+    tool_record = ds.search_s(
+        tool_base_dn,
+        ldap.SCOPE_ONELEVEL,
+        "(&(objectClass=groupOfNames)(cn={}.{}))".format(projectname, toolname),
+        ["*"],
+    )
+    return tool_record
+
+
 def _disabled_datestamps(ds, projectname):
     disableddict = {}
 
@@ -154,7 +165,9 @@ def _is_expired(datestamp, days):
 # file in its $home and no active cron.
 #
 # No active tool will have a crontab.disabled file.
-def reconcile_crontabs(conf, disabled_tools):
+def reconcile_crontabs(conf, ds):
+    disabled_tools = _disabled_datestamps(ds, conf["default"]["projectname"])
+
     # First, decide what we need to do with some set arithmetic.
     should_be_disabled = set(disabled_tools)
 
@@ -183,22 +196,24 @@ def reconcile_crontabs(conf, disabled_tools):
         set_step_complete(conf, tool, "crontab_disabled")
 
     for tool in to_enable:
-        cronfile = os.path.join(CRON_DIR, "tools.%s" % tool)
-        archivefile = os.path.join(TOOL_HOME_DIR, tool, DISABLED_CRON_NAME)
+        toolrec = _get_tool_record(ds, tool, conf["default"]["projectname"])
+        if toolrec:
+            cronfile = os.path.join(CRON_DIR, "tools.%s" % tool)
+            archivefile = os.path.join(TOOL_HOME_DIR, tool, DISABLED_CRON_NAME)
 
-        LOG.info("Restoring crontab for %s", tool)
+            LOG.info("Restoring crontab for %s", tool)
 
-        if os.path.isfile(cronfile):
-            LOG.warning(
-                "Tool %s has both an active crontab and and archived crontab",
-                tool,
-            )
-        else:
-            if os.path.getsize(archivefile):
-                subprocess.check_output(["mv", archivefile, cronfile])
+            if os.path.isfile(cronfile):
+                LOG.warning(
+                    "Tool %s has both an active crontab and and archived crontab",
+                    tool,
+                )
             else:
-                os.remove(archivefile)
-            set_step_complete(conf, tool, "crontab_disabled", state=False)
+                if os.path.getsize(archivefile):
+                    subprocess.check_output(["mv", archivefile, cronfile])
+                else:
+                    os.remove(archivefile)
+                set_step_complete(conf, tool, "crontab_disabled", state=False)
 
 
 def _list_grid_quotas():
@@ -269,11 +284,13 @@ def _is_ready_for_archive_and_delete(conf, tool, project):
     return True
 
 
-def reconcile_grid_quotas(conf, disabled_tools):
+def reconcile_grid_quotas(conf, ds):
     """Ensure that disabled tools prevent any new grid jobs from starting with
     a restrictive quota. Also ensure that the restrictive quota has been
     removed for any tools that have been re-enabled.
     """
+    disabled_tools = _disabled_datestamps(ds, conf["default"]["projectname"])
+
     should_be_disabled = set(disabled_tools)
     already_disabled = set(_list_grid_quotas())
 
@@ -295,10 +312,14 @@ def reconcile_grid_quotas(conf, disabled_tools):
         set_step_complete(conf, tool, "grid_disabled")
 
     for tool in to_enable:
-        LOG.info("Enabling grid jobs for %s", tool)
-        _delete_grid_quota(tool)
+        # Make sure the tool actually still exists in ldap and
+        #  isn't just a stray grid quota
+        toolrec = _get_tool_record(ds, tool, conf["default"]["projectname"])
+        if toolrec:
+            LOG.info("Enabling grid jobs for %s", tool)
+            _delete_grid_quota(tool)
 
-        set_step_complete(conf, tool, "grid_disabled", state=False)
+            set_step_complete(conf, tool, "grid_disabled", state=False)
 
 
 def _get_grid_jobs(tool):
@@ -441,7 +462,8 @@ def crontab(conf):
 
     ds = _open_ldap()
     reconcile_crontabs(
-        conf, _disabled_datestamps(ds, conf["default"]["projectname"])
+        conf,
+        ds,
     )
 
     # The cron server happens to also be a submit host, so it's a good place
@@ -462,7 +484,7 @@ def gridengine(conf):
         _remove_service_manifest(tool)
         # we don't actually kill jobs here because we can't run qdel on the grid master.
         # that job is left to the cron host (where we /can/ run qdel.)
-    reconcile_grid_quotas(conf, disabled_tools)
+    reconcile_grid_quotas(conf, ds)
 
 
 def archive(conf):
