@@ -532,7 +532,7 @@ def get_step_complete(conf, tool, step):
         rows = cursor.fetchall()
     connection.close()
 
-    if rows and rows[0][step]:
+    if rows and rows[0][0]:
         return True
 
     return False
