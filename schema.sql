@@ -7,7 +7,6 @@ CREATE TABLE `toolstate` (
    `db_disabled` tinyint(4) DEFAULT 0,
    `crontab_disabled` tinyint(4) DEFAULT 0,
    `ldap_deleted` tinyint(4) DEFAULT 0,
-   `dbuser_deleted` tinyint(4) DEFAULT 0,
    `home_archived` tinyint(4) DEFAULT 0,
    PRIMARY KEY (`toolname`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
