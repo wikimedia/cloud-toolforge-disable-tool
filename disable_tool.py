@@ -45,6 +45,7 @@ QUOTA_SUFFIX = "_disable"
 CRON_DIR = "/var/spool/cron/crontabs"
 TOOL_HOME_DIR = "/data/project/"
 DISABLED_CRON_NAME = "crontab.disabled"
+DISABLED_K8S_FILE = "k8s.disabled"
 SERVICE_MANIFEST_FILE = "service.manifest"
 REPLICA_CONF = "replica.my.cnf"
 CONFIG_FILE = "/etc/disable_tool.conf"
@@ -279,8 +280,10 @@ def _is_ready_for_archive_and_delete(conf, tool, project):
     if not get_step_complete(conf, tool, "grid_disabled"):
         return False
 
-    if not get_step_complete(conf, tool, "kubernetes_disabled"):
-        return False
+    # We don't need to check the kubernetes flag here, because
+    #  it was a prerequisite for db_disabled.
+    # if not get_step_complete(conf, tool, "kubernetes_disabled"):
+    # return False
 
     if not get_step_complete(conf, tool, "db_disabled"):
         return False
@@ -610,8 +613,13 @@ def archive_dbs(conf):
     for tool in disabled_tools:
         uid, datestamp = disabled_tools[tool]
         if _is_expired(datestamp, int(conf["default"]["archive_after_days"])):
+            # This should be
+            # if not get_step_complete(conf, tool, "kubernetes_disabled")
+            # once T334629 is resolved
+            tool_home = os.path.join(TOOL_HOME_DIR, tool)
+            disabled_k8s_file = os.path.join(tool_home, DISABLED_K8S_FILE)
             if (
-                not get_step_complete(conf, tool, "kubernetes_disabled")
+                not os.path.isfile(disabled_k8s_file)
                 or not get_step_complete(conf, tool, "grid_disabled")
                 or not get_step_complete(conf, tool, "crontab_disabled")
             ):
