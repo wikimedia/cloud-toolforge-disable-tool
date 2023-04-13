@@ -184,7 +184,7 @@ def reconcile_crontabs(conf, ds):
     to_enable = already_disabled - should_be_disabled
 
     for tool in to_disable:
-        tool_home = _tool_dir(conf, tool, conf["default"]["projectname"])
+        tool_home = os.path.join(TOOL_HOME_DIR, tool)
         if not os.path.exists(tool_home):
             # Nothing to do here!
             continue
@@ -355,9 +355,10 @@ def _remove_service_manifest(tool):
 
 def _delete_ldap_entries(conf, tool, project):
     """Delete all ldap references to the specified tool."""
-    if not _is_ready_for_archive_and_delete(conf, tool, project):
+
+    if not get_step_complete(conf, tool, "home_archived"):
         LOG.info(
-            "Tool %s is expired but not properly shut down yet, skipping file archive",
+            "Tool %s is expired but home dir not yet archived. Postponing ldap deletion.",
             tool,
         )
         return
@@ -537,12 +538,6 @@ def deleteldap(conf):
             if _is_expired(
                 datestamp, int(conf["default"]["archive_after_days"])
             ):
-                if not _is_ready_for_archive_and_delete(conf, tool, project):
-                    LOG.info(
-                        "Tool %s is expired but not shut down yet. Postponing ldap deletion.",
-                        tool,
-                    )
-                    continue
                 if not get_step_complete(conf, tool, "home_archived"):
                     LOG.info(
                         "Tool %s is expired but home dir not yet archived. Postponing ldap deletion.",
