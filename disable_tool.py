@@ -361,9 +361,9 @@ def _delete_ldap_entries(conf, tool, project):
 
     # Get a special ldap session with read/write permissions
     novaadmin_ds = _open_ldap(
-        conf["archive"]["ldap_uri"],
-        conf["archive"]["ldap_bind_dn"],
-        conf["archive"]["ldap_bind_pass"],
+        conf["deleteldap"]["ldap_uri"],
+        conf["deleteldap"]["ldap_bind_dn"],
+        conf["deleteldap"]["ldap_bind_pass"],
     )
 
     # Doublecheck that our creds are working and we should really delete this
@@ -526,7 +526,7 @@ def deleteldap(conf):
     ds = _open_ldap()
     for project in [
         project.strip()
-        for project in conf["archive"]["all_projects_on_server"].split(",")
+        for project in conf["deleteldap"]["all_projects_on_server"].split(",")
     ]:
         disabled_tools = _disabled_datestamps(ds, project)
         for tool in disabled_tools:
@@ -727,7 +727,7 @@ if __name__ == "__main__":
         "been disabled for more than %s days"
         % config["default"]["archive_after_days"],
     )
-    sp_archivedbs.set_defaults(func=deleteldap)
+    sp_deleteldap.set_defaults(func=deleteldap)
 
     args = parser.parse_args()
 
