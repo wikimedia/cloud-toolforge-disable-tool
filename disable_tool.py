@@ -183,6 +183,11 @@ def reconcile_crontabs(conf, ds):
     to_enable = already_disabled - should_be_disabled
 
     for tool in to_disable:
+        tool_home = _tool_dir(conf, tool, conf["default"]["projectname"])
+        if not os.path.exists(tool_home):
+            # Nothing to do here!
+            continue
+
         cronfile = os.path.join(CRON_DIR, "tools.%s" % tool)
         archivefile = os.path.join(TOOL_HOME_DIR, tool, DISABLED_CRON_NAME)
 
@@ -268,8 +273,7 @@ def _is_ready_for_archive_and_delete(conf, tool, project):
         # This was archived on a prior path
         return True
 
-    cron_archive = os.path.join(tool_home, DISABLED_CRON_NAME)
-    if not os.path.isfile(cron_archive):
+    if not get_step_complete(conf, tool, "crontab_disabled"):
         return False
 
     if not get_step_complete(conf, tool, "grid_disabled"):
@@ -298,8 +302,7 @@ def reconcile_grid_quotas(conf, ds):
     to_enable = already_disabled - should_be_disabled
 
     for tool in to_disable:
-        cron_archive = os.path.join(TOOL_HOME_DIR, tool, DISABLED_CRON_NAME)
-        if not os.path.isfile(cron_archive):
+        if not get_step_complete(conf, tool, "crontab_disabled"):
             LOG.warning(
                 "Tool %s may still have an active cron; postponing grid disable",
                 tool,
@@ -573,13 +576,10 @@ def archive_dbs(conf):
     for tool in disabled_tools:
         uid, datestamp = disabled_tools[tool]
         if _is_expired(datestamp, int(conf["default"]["archive_after_days"])):
-            tool_home = os.path.join(TOOL_HOME_DIR, tool)
-            cron_archive = os.path.join(tool_home, DISABLED_CRON_NAME)
-
             if (
                 not get_step_complete(conf, tool, "kubernetes_disabled")
                 or not get_step_complete(conf, tool, "grid_disabled")
-                or not os.path.isfile(cron_archive)
+                or not get_step_complete(conf, tool, "crontab_disabled")
             ):
                 LOG.info(
                     "Tool %s is expired but not properly shut down yet", tool
