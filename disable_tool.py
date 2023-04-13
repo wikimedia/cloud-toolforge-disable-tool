@@ -516,6 +516,40 @@ def archive(conf):
                     LOG.info("Tool %s is expired; archiving", tool)
 
                 _archive_home(conf, tool, project)
+
+
+def deleteldap(conf):
+    if conf["deleteldap"]["hostname_substring"] not in socket.gethostname():
+        LOG.error("This command can only be run on a cloudcontrol server")
+        exit(4)
+
+    ds = _open_ldap()
+    for project in [
+        project.strip()
+        for project in conf["archive"]["all_projects_on_server"].split(",")
+    ]:
+        disabled_tools = _disabled_datestamps(ds, project)
+        for tool in disabled_tools:
+            _uid, datestamp = disabled_tools[tool]
+            if _is_expired(
+                datestamp, int(conf["default"]["archive_after_days"])
+            ):
+                if not _is_ready_for_archive_and_delete(conf, tool, project):
+                    LOG.info(
+                        "Tool %s is expired but not shut down yet. Postponing ldap deletion.",
+                        tool,
+                    )
+                    continue
+                if not get_step_complete(conf, tool, "home_archived"):
+                    LOG.info(
+                        "Tool %s is expired but home dir not yet archived. Postponing ldap deletion.",
+                        tool,
+                    )
+                    continue
+                LOG.info(
+                    "Tool %s is expired and archived; deleting ldap records",
+                    tool,
+                )
                 _delete_ldap_entries(conf, tool, project)
 
 
@@ -686,6 +720,14 @@ if __name__ == "__main__":
         % config["default"]["archive_after_days"],
     )
     sp_archivedbs.set_defaults(func=archive_dbs)
+
+    sp_deleteldap = sp.add_parser(
+        "deleteldap",
+        help="Delete ldap records for a tool that's"
+        "been disabled for more than %s days"
+        % config["default"]["archive_after_days"],
+    )
+    sp_archivedbs.set_defaults(func=deleteldap)
 
     args = parser.parse_args()
 
